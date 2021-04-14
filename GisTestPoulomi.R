@@ -1,0 +1,70 @@
+#### The given data location wass too small to be fit into a Landsat scene 
+#### resulting in an error "data not found" when specified as co-ords boundary.
+#### was used to create an aoi shapefile in ArcGis using Editor toolbox > create
+#### The datasets hence had to be downloaded manually from USGS earth explorer
+#### the aoi provided was later used to gernerate a cropped image in the code.
+
+##importing neccessary raster libraries
+
+library(raster)
+library(rgdal)
+library(ggplot2)
+library(sp)
+library(reshape2)
+library(dplyr)
+
+##importing NIR and RED bands from landsat-8 downloaded data for MSAVI 2 
+
+nir<-raster("E:/Prac/LE07_L2SP_138044_20001117_20200917_02_T1_SR_B5.tif")
+red<-raster("E:/Prac/LE07_L2SP_138044_20001117_20200917_02_T1_SR_B4.tif")
+
+##creating function for MSAVI2 calculation
+
+msavi_calc<-function(nir,red)
+{
+  x<-((2 * nir + 1)^2)
+  y<- 8*(nir-red)
+  msavi<-((2*nir+1)-((x-y)^(1/2)))/2
+  
+## plotting and saving created raster as .tif
+  
+  plot(msavi)
+  b<-writeRaster(msavi, filename="E:/Prac/MSAVI/msavi1.tif", overwrite=TRUE)
+}
+c<-msavi_calc(nir,red)
+
+##fuction for timeseries .. to be run after MSAVI for all monthly datasets have
+## been generated i.e 12 rasters for each location
+
+timeSeries_calc<-function()
+{
+  pathx<- "E:/Prac/MSAVI"
+
+## list of files in mSAVI directory in given path and stacking them 
+  
+  allMS<- list.files(pathx)
+  stk<- stack(allMS, quick= TRUE)
+  crs(stk)
+  
+## creating monthly datasets of the stack and renaming them as months 
+  
+  stk_mon<-stackApply(stk, 1:12)
+  names(stk_mon)<-month.name
+  
+## croping entire landsat scene to given AOI
+  
+  shp<-st_read("E:/Prac/Shapefile/aoi.shp")
+  aoi<- crop(stk_mon,shp)
+  aoi_mask<-mask(aoi,shp)
+  plot(aoi_mask)
+  
+##creating a dataframe for time series and plotting it 
+  
+  stk_df<- as.data.frame(stk_mon,xy=TRUE) %>%
+  melt(id.vars = c("x","y"))
+  ggplot()+
+    geom_raster(stk_df,lim=c(0,1),aes(x=x,y=y, fill=value))+
+    facet_wrap(variable)+
+    labs(x='latitude',y='longitude')
+}
+d<- timeSeries_calc()
